@@ -30,9 +30,20 @@ export async function POST(req) {
       return new Response(JSON.stringify({ error: "Missing code" }), { status: 400 });
     }
 
-    const tokenRes = await fetch("https://open-api.tiktok.com/oauth/access_token/", {
+    // Отладочная информация
+    console.log('Token exchange request:', {
+      client_key: process.env.TIKTOK_CLIENT_KEY ? 'SET' : 'MISSING',
+      client_secret: process.env.TIKTOK_CLIENT_SECRET ? 'SET' : 'MISSING',
+      redirect_uri: process.env.TIKTOK_REDIRECT_URI,
+      code: code ? 'SET' : 'MISSING'
+    });
+
+    const tokenRes = await fetch("https://open.tiktokapis.com/v2/oauth/token/", {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: { 
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Cache-Control": "no-cache"
+      },
       body: new URLSearchParams({
         client_key: process.env.TIKTOK_CLIENT_KEY,
         client_secret: process.env.TIKTOK_CLIENT_SECRET,
@@ -43,27 +54,32 @@ export async function POST(req) {
     });
 
     const tokenData = await tokenRes.json();
+    console.log('Token response:', tokenData);
 
-    if (!tokenData.data?.access_token) {
+    if (!tokenData.access_token && !tokenData.data?.access_token) {
       return new Response(JSON.stringify({ error: tokenData }), { status: 400 });
     }
 
-    const userRes = await fetch("https://open-api.tiktok.com/user/info/", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        access_token: tokenData.data.access_token,
-        open_id: tokenData.data.open_id,
-      }),
+    // Используем правильный токен из ответа
+    const accessToken = tokenData.access_token || tokenData.data?.access_token;
+    const openId = tokenData.open_id || tokenData.data?.open_id;
+
+    const userRes = await fetch("https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,display_name,username", {
+      method: "GET",
+      headers: { 
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      },
     });
 
     const userData = await userRes.json();
+    console.log('User response:', userData);
 
     return new Response(
       JSON.stringify({
-        access_token: tokenData.data.access_token,
-        refresh_token: tokenData.data.refresh_token,
-        user: userData.data,
+        access_token: accessToken,
+        refresh_token: tokenData.refresh_token || tokenData.data?.refresh_token,
+        user: userData.data || userData,
       }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
