@@ -11,21 +11,10 @@ export default function Home() {
     const clientKey = process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY;
     const redirectUri = process.env.NEXT_PUBLIC_TIKTOK_REDIRECT_URI;
     
-    // Отладочная информация
-    console.log('Environment variables check:', {
-      clientKey: clientKey ? 'Set' : 'MISSING',
-      redirectUri: redirectUri ? 'Set' : 'MISSING',
-      clientKeyValue: clientKey,
-      redirectUriValue: redirectUri
-    });
-
     if (!clientKey || !redirectUri) {
       setError(`Missing environment variables: ${!clientKey ? 'NEXT_PUBLIC_TIKTOK_CLIENT_KEY ' : ''}${!redirectUri ? 'NEXT_PUBLIC_TIKTOK_REDIRECT_URI' : ''}`);
       return;
     }
-
-    setLoading(true);
-    setError(null);
 
     const scope = "user.info.basic";
     const state = Math.random().toString(36).substring(7);
@@ -33,40 +22,8 @@ export default function Home() {
 
     const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&response_type=code&scope=${scope}&redirect_uri=${encodedRedirectUri}&state=${state}`;
 
-    console.log('Generated auth URL:', authUrl);
-
-    // Открываем popup для OAuth
-    const popup = window.open(authUrl, 'tiktok-oauth', 'width=600,height=700,scrollbars=yes,resizable=yes');
-
-    // Слушаем сообщения от popup
-    const handleMessage = (event) => {
-      if (event.origin !== window.location.origin) return;
-      
-      console.log('Received message from popup:', event.data);
-      
-      if (event.data.success && event.data.data) {
-        setUser(event.data.data.user);
-        setLoading(false);
-      } else if (event.data.error) {
-        setError(event.data.error);
-        setLoading(false);
-      }
-      
-      window.removeEventListener('message', handleMessage);
-      if (popup) popup.close();
-    };
-
-    window.addEventListener('message', handleMessage);
-
-    // Проверяем, не закрыл ли пользователь popup
-    const checkClosed = setInterval(() => {
-      if (popup.closed) {
-        clearInterval(checkClosed);
-        window.removeEventListener('message', handleMessage);
-        setLoading(false);
-        setError('Авторизация была отменена');
-      }
-    }, 1000);
+    // Простой редирект на TikTok
+    window.location.href = authUrl;
   };
 
   const handleCode = async (code) => {
@@ -95,10 +52,17 @@ export default function Home() {
     }
   };
 
-  // Очищаем URL от OAuth параметров при загрузке (если остались)
+  // Ловим code или error после редиректа
   React.useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has("code") || urlParams.has("error")) {
+    const code = urlParams.get("code");
+    const error = urlParams.get("error");
+    
+    if (error) {
+      setError(decodeURIComponent(error));
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (code) {
+      handleCode(code);
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []);

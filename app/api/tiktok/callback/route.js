@@ -6,57 +6,22 @@ export async function GET(req) {
     const error = searchParams.get('error');
 
     if (error) {
-      return new Response(`
-        <html>
-          <body>
-            <script>
-              window.opener.postMessage({ error: '${error}' }, '*');
-              window.close();
-            </script>
-          </body>
-        </html>
-      `, { 
-        status: 200, 
-        headers: { 'Content-Type': 'text/html' } 
-      });
+      return Response.redirect(`${new URL(req.url).origin}/?error=${encodeURIComponent(error)}`);
     }
 
     if (!code) {
-      return new Response(`
-        <html>
-          <body>
-            <script>
-              window.opener.postMessage({ error: 'Missing authorization code' }, '*');
-              window.close();
-            </script>
-          </body>
-        </html>
-      `, { 
-        status: 200, 
-        headers: { 'Content-Type': 'text/html' } 
-      });
+      return Response.redirect(`${new URL(req.url).origin}/?error=${encodeURIComponent('Missing authorization code')}`);
     }
 
-    return await exchangeCodeForToken(code);
+    // Редиректим обратно на главную страницу с кодом
+    return Response.redirect(`${new URL(req.url).origin}/?code=${encodeURIComponent(code)}`);
   } catch (err) {
     console.error('GET callback error:', err);
-    return new Response(`
-      <html>
-        <body>
-          <script>
-            window.opener.postMessage({ error: 'Authentication failed' }, '*');
-            window.close();
-          </script>
-        </body>
-      </html>
-    `, { 
-      status: 200, 
-      headers: { 'Content-Type': 'text/html' } 
-    });
+    return Response.redirect(`${new URL(req.url).origin}/?error=${encodeURIComponent('Authentication failed')}`);
   }
 }
 
-// POST handler для внутренних запросов
+// POST handler для обмена кода на токен
 export async function POST(req) {
   try {
     const { code } = await req.json();
@@ -65,15 +30,6 @@ export async function POST(req) {
       return new Response(JSON.stringify({ error: "Missing code" }), { status: 400 });
     }
 
-    return await exchangeCodeForToken(code);
-  } catch (err) {
-    console.error('POST callback error:', err);
-    return new Response(JSON.stringify({ error: "Failed to exchange token" }), { status: 500 });
-  }
-}
-
-async function exchangeCodeForToken(code) {
-  try {
     const tokenRes = await fetch("https://open-api.tiktok.com/oauth/access_token/", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -89,19 +45,7 @@ async function exchangeCodeForToken(code) {
     const tokenData = await tokenRes.json();
 
     if (!tokenData.data?.access_token) {
-      return new Response(`
-        <html>
-          <body>
-            <script>
-              window.opener.postMessage({ error: ${JSON.stringify(tokenData)} }, '*');
-              window.close();
-            </script>
-          </body>
-        </html>
-      `, { 
-        status: 200, 
-        headers: { 'Content-Type': 'text/html' } 
-      });
+      return new Response(JSON.stringify({ error: tokenData }), { status: 400 });
     }
 
     const userRes = await fetch("https://open-api.tiktok.com/user/info/", {
@@ -115,39 +59,16 @@ async function exchangeCodeForToken(code) {
 
     const userData = await userRes.json();
 
-    const result = {
-      access_token: tokenData.data.access_token,
-      refresh_token: tokenData.data.refresh_token,
-      user: userData.data,
-    };
-
-    return new Response(`
-      <html>
-        <body>
-          <script>
-            window.opener.postMessage({ success: true, data: ${JSON.stringify(result)} }, '*');
-            window.close();
-          </script>
-        </body>
-      </html>
-    `, { 
-      status: 200, 
-      headers: { 'Content-Type': 'text/html' } 
-    });
+    return new Response(
+      JSON.stringify({
+        access_token: tokenData.data.access_token,
+        refresh_token: tokenData.data.refresh_token,
+        user: userData.data,
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
   } catch (err) {
-    console.error('Exchange token error:', err);
-    return new Response(`
-      <html>
-        <body>
-          <script>
-            window.opener.postMessage({ error: 'Failed to exchange token' }, '*');
-            window.close();
-          </script>
-        </body>
-      </html>
-    `, { 
-      status: 200, 
-      headers: { 'Content-Type': 'text/html' } 
-    });
+    console.error('POST callback error:', err);
+    return new Response(JSON.stringify({ error: "Failed to exchange token" }), { status: 500 });
   }
 }
