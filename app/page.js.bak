@@ -1,0 +1,26 @@
+"use client";
+import React from "react";
+
+export default function Home() {
+  const loginWithTikTok = () => {
+    const clientKey = process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY;
+    const redirectUri = encodeURIComponent(process.env.NEXT_PUBLIC_TIKTOK_REDIRECT_URI);
+    const scope = "user.info.basic";
+    const state = Math.random().toString(36).substring(7);
+
+    const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&response_type=code&scope=${scope}&redirect_uri=${redirectUri}&state=${state}`;
+
+    window.location.href = authUrl;
+  };
+
+  return (
+    <main className="flex h-screen items-center justify-center">
+      <button
+        onClick={loginWithTikTok}
+        className="px-6 py-3 bg-black text-white rounded-xl shadow-lg hover:bg-gray-800"
+      >
+        Login with TikTok
+      </button>
+    </main>
+  );
+}
