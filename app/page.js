@@ -9,14 +9,64 @@ export default function Home() {
 
   const loginWithTikTok = () => {
     const clientKey = process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY;
-    const redirectUri = encodeURIComponent(process.env.NEXT_PUBLIC_TIKTOK_REDIRECT_URI);
+    const redirectUri = process.env.NEXT_PUBLIC_TIKTOK_REDIRECT_URI;
+    
+    // Отладочная информация
+    console.log('Environment variables check:', {
+      clientKey: clientKey ? 'Set' : 'MISSING',
+      redirectUri: redirectUri ? 'Set' : 'MISSING',
+      clientKeyValue: clientKey,
+      redirectUriValue: redirectUri
+    });
+
+    if (!clientKey || !redirectUri) {
+      setError(`Missing environment variables: ${!clientKey ? 'NEXT_PUBLIC_TIKTOK_CLIENT_KEY ' : ''}${!redirectUri ? 'NEXT_PUBLIC_TIKTOK_REDIRECT_URI' : ''}`);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
     const scope = "user.info.basic";
     const state = Math.random().toString(36).substring(7);
+    const encodedRedirectUri = encodeURIComponent(redirectUri);
 
-    const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&response_type=code&scope=${scope}&redirect_uri=${redirectUri}&state=${state}`;
+    const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&response_type=code&scope=${scope}&redirect_uri=${encodedRedirectUri}&state=${state}`;
 
-    // редиректим на TikTok
-    window.location.href = authUrl;
+    console.log('Generated auth URL:', authUrl);
+
+    // Открываем popup для OAuth
+    const popup = window.open(authUrl, 'tiktok-oauth', 'width=600,height=700,scrollbars=yes,resizable=yes');
+
+    // Слушаем сообщения от popup
+    const handleMessage = (event) => {
+      if (event.origin !== window.location.origin) return;
+      
+      console.log('Received message from popup:', event.data);
+      
+      if (event.data.success && event.data.data) {
+        setUser(event.data.data.user);
+        setLoading(false);
+      } else if (event.data.error) {
+        setError(event.data.error);
+        setLoading(false);
+      }
+      
+      window.removeEventListener('message', handleMessage);
+      if (popup) popup.close();
+    };
+
+    window.addEventListener('message', handleMessage);
+
+    // Проверяем, не закрыл ли пользователь popup
+    const checkClosed = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(checkClosed);
+        window.removeEventListener('message', handleMessage);
+        setLoading(false);
+        setError('Авторизация была отменена');
+      }
+    }, 1000);
   };
 
   const handleCode = async (code) => {
@@ -45,13 +95,10 @@ export default function Home() {
     }
   };
 
-  // Ловим code после редиректа
+  // Очищаем URL от OAuth параметров при загрузке (если остались)
   React.useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get("code");
-    if (code) {
-      handleCode(code);
-      // очищаем URL
+    if (urlParams.has("code") || urlParams.has("error")) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []);
@@ -59,12 +106,21 @@ export default function Home() {
   return (
     <main className="flex flex-col h-screen items-center justify-center gap-6">
       {!user && !loading && !error && (
-        <button
-          onClick={loginWithTikTok}
-          className="px-6 py-3 bg-black text-white rounded-xl shadow-lg hover:bg-gray-800"
-        >
-          Login with TikTok
-        </button>
+        <div className="flex flex-col items-center gap-4">
+          <button
+            onClick={loginWithTikTok}
+            className="px-6 py-3 bg-black text-white rounded-xl shadow-lg hover:bg-gray-800"
+          >
+            Login with TikTok
+          </button>
+          <div className="text-sm text-gray-500 text-center max-w-md">
+            <p>Нужно настроить переменные окружения в Vercel:</p>
+            <ul className="text-left mt-2 space-y-1">
+              <li>• NEXT_PUBLIC_TIKTOK_CLIENT_KEY</li>
+              <li>• NEXT_PUBLIC_TIKTOK_REDIRECT_URI</li>
+            </ul>
+          </div>
+        </div>
       )}
 
       {loading && <p>Loading profile...</p>}
